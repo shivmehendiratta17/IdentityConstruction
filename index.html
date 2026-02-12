@@ -3,8 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Anima: Life Simulator</title>
-    <meta name="description" content="A deep psychological life simulation game." />
+    <title>Anima: Deep Life Simulator</title>
+    <meta name="description" content="A psychological text-based life simulation game where every decision shapes your psyche. Created by Shiv Mehendiratta." />
+    
+    <!-- Social Meta Tags -->
+    <meta property="og:title" content="Anima: Deep Life Simulator" />
+    <meta property="og:description" content="Explore the architecture of a soul in this deep psychological simulation." />
+    <meta property="og:type" content="website" />
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -17,6 +23,7 @@
                     },
                     animation: {
                         'fade-in': 'fadeIn 0.5s ease-out forwards',
+                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
                     },
                     keyframes: {
                         fadeIn: {
@@ -31,16 +38,19 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400&display=swap');
         
-        /* Custom scrollbar for dark theme */
+        body {
+            background-color: #09090b;
+        }
+
         ::-webkit-scrollbar {
-            width: 8px;
+            width: 6px;
         }
         ::-webkit-scrollbar-track {
             background: #09090b; 
         }
         ::-webkit-scrollbar-thumb {
             background: #27272a; 
-            border-radius: 4px;
+            border-radius: 10px;
         }
         ::-webkit-scrollbar-thumb:hover {
             background: #3f3f46; 

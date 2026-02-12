@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { GameState, SceneResponse } from '../types';
 import { generateScene } from '../geminiService';
 import StatsPanel from './StatsPanel';
-import { Ghost, Clock, User, Loader2, History, Quote, MapPin } from 'lucide-react';
+import { Ghost, Clock, User, Loader2, History, Quote } from 'lucide-react';
 
 interface GameplayProps {
   initialState: GameState;
@@ -19,84 +19,89 @@ const Gameplay: React.FC<GameplayProps> = ({ initialState, onGameOver }) => {
   const processTurn = async (choiceId: string | null, choiceText: string | null) => {
     setLoading(true);
     
-    // Generate next scene based on current state + user choice
-    const scene = await generateScene(gameState, choiceText);
+    try {
+        const scene = await generateScene(gameState, choiceText);
+        setCurrentScene(scene);
 
-    if (scene.isDeath || gameState.age >= 90) {
-        onGameOver(gameState);
-        return;
+        // Apply updates to state
+        setGameState(prev => {
+            const updateStats = <T extends object>(current: T, updates?: Partial<T>): T => {
+                 if (!updates) return current;
+                 const next = { ...current };
+                 (Object.keys(updates) as Array<keyof T>).forEach(key => {
+                     const currentVal = (next[key] as unknown as number) || 0;
+                     const updateVal = (updates[key] as unknown as number) || 0;
+                     // @ts-ignore
+                     next[key] = Math.max(0, Math.min(100, currentVal + updateVal));
+                 });
+                 return next;
+            };
+
+            const newVisible = updateStats(prev.visibleStats, scene.visibleUpdates);
+            const newHidden = updateStats(prev.hiddenStats, scene.hiddenUpdates);
+            const newSocial = updateStats(prev.socialStats, scene.socialUpdates);
+            const newPressure = updateStats(prev.pressureStats, scene.pressureUpdates);
+
+            const newAge = prev.age + (scene.ageIncrement || 0);
+
+            const newHistory = [...prev.history];
+            if (choiceText) {
+                newHistory.push({
+                    age: prev.age,
+                    text: choiceText,
+                    memory: scene.memoryTrigger || ""
+                });
+            }
+
+            let newRelationships = [...prev.relationships];
+            if (scene.relationshipUpdates) {
+                 scene.relationshipUpdates.forEach(update => {
+                     const existingIdx = newRelationships.findIndex(r => r.name === update.name);
+                     if (existingIdx >= 0) {
+                         newRelationships[existingIdx] = {
+                             ...newRelationships[existingIdx],
+                             value: Math.max(0, Math.min(100, newRelationships[existingIdx].value + (update.change || 0))),
+                             role: update.role || newRelationships[existingIdx].role,
+                             status: update.status || newRelationships[existingIdx].status
+                         };
+                     } else {
+                         newRelationships.push({ 
+                             name: update.name, 
+                             value: 50 + (update.change || 0), 
+                             role: update.role || 'Associate',
+                             status: update.status || 'Neutral'
+                         });
+                     }
+                 });
+            }
+
+            const updatedState = {
+                ...prev,
+                age: newAge,
+                season: scene.newSeason || prev.season,
+                visibleStats: newVisible,
+                hiddenStats: newHidden,
+                socialStats: newSocial,
+                pressureStats: newPressure,
+                history: newHistory,
+                relationships: newRelationships,
+                archetype: scene.archetypeProgress || prev.archetype,
+                turnCount: prev.turnCount + 1
+            };
+
+            // Check for death AFTER calculating state updates
+            if (scene.isDeath || newAge >= 95) {
+                setTimeout(() => onGameOver(updatedState), 500);
+            }
+
+            return updatedState;
+        });
+
+    } catch (err) {
+        console.error("Turn processing failed", err);
+    } finally {
+        setLoading(false);
     }
-
-    setCurrentScene(scene);
-
-    // Apply updates to state
-    setGameState(prev => {
-        const updateStats = <T extends object>(current: T, updates?: Partial<T>): T => {
-             if (!updates) return current;
-             const next = { ...current };
-             (Object.keys(updates) as Array<keyof T>).forEach(key => {
-                 // @ts-ignore
-                 next[key] = Math.max(0, Math.min(100, (next[key] as number) + (updates[key] as number || 0)));
-             });
-             return next;
-        };
-
-        const newVisible = updateStats(prev.visibleStats, scene.visibleUpdates);
-        const newHidden = updateStats(prev.hiddenStats, scene.hiddenUpdates);
-        const newSocial = updateStats(prev.socialStats, scene.socialUpdates);
-        const newPressure = updateStats(prev.pressureStats, scene.pressureUpdates);
-
-        const newAge = prev.age + (scene.ageIncrement || 0);
-
-        // Update history with memory preservation
-        const newHistory = [...prev.history];
-        if (choiceText) {
-            newHistory.push({
-                age: prev.age,
-                text: choiceText,
-                memory: scene.memoryTrigger || ""
-            });
-        }
-
-        // Update relationships
-        let newRelationships = [...prev.relationships];
-        if (scene.relationshipUpdates) {
-             scene.relationshipUpdates.forEach(update => {
-                 const existingIdx = newRelationships.findIndex(r => r.name === update.name);
-                 if (existingIdx >= 0) {
-                     newRelationships[existingIdx] = {
-                         ...newRelationships[existingIdx],
-                         value: Math.max(0, Math.min(100, newRelationships[existingIdx].value + update.change)),
-                         role: update.role || newRelationships[existingIdx].role,
-                         status: update.status || newRelationships[existingIdx].status
-                     };
-                 } else {
-                     newRelationships.push({ 
-                         name: update.name, 
-                         value: 50 + update.change, 
-                         role: update.role || 'Associate',
-                         status: update.status || 'Neutral'
-                     });
-                 }
-             });
-        }
-
-        return {
-            ...prev,
-            age: newAge,
-            season: scene.newSeason || prev.season,
-            visibleStats: newVisible,
-            hiddenStats: newHidden,
-            socialStats: newSocial,
-            pressureStats: newPressure,
-            history: newHistory,
-            relationships: newRelationships,
-            archetype: scene.archetypeProgress || prev.archetype,
-            turnCount: prev.turnCount + 1
-        };
-    });
-
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -110,7 +115,6 @@ const Gameplay: React.FC<GameplayProps> = ({ initialState, onGameOver }) => {
       }
   }, [currentScene]);
 
-  // Determine visual tone classes
   const getVisualClasses = (tone?: string) => {
       switch(tone) {
           case 'Dark': return 'bg-zinc-950 text-zinc-400';
@@ -125,7 +129,7 @@ const Gameplay: React.FC<GameplayProps> = ({ initialState, onGameOver }) => {
       return (
           <div className="h-screen flex flex-col items-center justify-center bg-zinc-950 text-zinc-500 gap-4">
               <Loader2 className="animate-spin w-8 h-8 text-zinc-700" /> 
-              <span className="font-serif tracking-widest text-xs uppercase">Simulating Consciousness...</span>
+              <span className="font-serif tracking-widest text-xs uppercase animate-pulse">Simulating Consciousness...</span>
           </div>
       );
   }
@@ -133,10 +137,8 @@ const Gameplay: React.FC<GameplayProps> = ({ initialState, onGameOver }) => {
   return (
     <div className="flex flex-col md:flex-row h-screen bg-zinc-950 overflow-hidden font-sans text-zinc-100">
       
-      {/* Main Narrative Area */}
       <div className={`flex-1 flex flex-col relative transition-all duration-1000 ${getVisualClasses(currentScene?.visualTone)}`}>
         
-        {/* Header */}
         <header className="h-20 border-b border-zinc-900 flex items-center justify-between px-8 bg-zinc-950/80 backdrop-blur z-10 shrink-0">
             <div className="flex flex-col">
                  <span className="text-zinc-500 text-[10px] uppercase tracking-[0.2em] mb-1">{gameState.season}</span>
@@ -157,7 +159,6 @@ const Gameplay: React.FC<GameplayProps> = ({ initialState, onGameOver }) => {
             </button>
         </header>
 
-        {/* Narrative Scroll */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-8 md:p-16 lg:p-24 scroll-smooth">
             <div className="max-w-2xl mx-auto space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
                 
@@ -185,7 +186,6 @@ const Gameplay: React.FC<GameplayProps> = ({ initialState, onGameOver }) => {
                     </div>
                 )}
 
-                {/* Relationships Context */}
                 {gameState.relationships.length > 0 && (
                     <div className="border-t border-zinc-900 pt-8 mt-12">
                         <h4 className="text-zinc-600 text-[10px] uppercase tracking-widest mb-4">Key Figures</h4>
@@ -208,7 +208,6 @@ const Gameplay: React.FC<GameplayProps> = ({ initialState, onGameOver }) => {
             </div>
         </div>
 
-        {/* Action Area */}
         <div className="border-t border-zinc-900 bg-zinc-950 p-8 md:p-12 z-20 shrink-0">
             <div className="max-w-2xl mx-auto">
                 {loading ? (
@@ -241,10 +240,15 @@ const Gameplay: React.FC<GameplayProps> = ({ initialState, onGameOver }) => {
                         ))}
                     </div>
                 )}
+                
+                <div className="mt-8 pt-4 border-t border-zinc-900/50 text-center">
+                    <p className="text-[10px] text-zinc-700 font-mono tracking-widest uppercase opacity-40">
+                        Made by Shiv Mehendiratta
+                    </p>
+                </div>
             </div>
         </div>
 
-        {/* History Overlay */}
         {historyOpen && (
             <div className="absolute inset-0 bg-zinc-950/98 z-50 p-12 overflow-y-auto animate-in fade-in">
                 <div className="max-w-2xl mx-auto">
@@ -277,7 +281,6 @@ const Gameplay: React.FC<GameplayProps> = ({ initialState, onGameOver }) => {
 
       </div>
 
-      {/* Side Stats Panel (Desktop) */}
       <div className="hidden md:block w-80 bg-zinc-950 h-full border-l border-zinc-900 shrink-0">
         <StatsPanel state={gameState} />
       </div>
